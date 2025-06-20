@@ -82,72 +82,56 @@ class Book extends \yii\db\ActiveRecord
         return $this->hasMany(Author::class, ['id' => 'author_id'])->viaTable('{{%book_author}}', ['book_id' => 'id']);
     }
 		
-	public function upload()
-    {
-        if ($this->coverImageFile) {
-            $path = Yii::getAlias('@webroot/uploads/');
-            if (!file_exists($path)) {
-                mkdir($path, 0777, true);
-            }
-            
-            $filename = Yii::$app->security->generateRandomString() . '.' . $this->coverImageFile->extension;
-            $filepath = $path . $filename;
-            
-            if ($this->coverImageFile->saveAs($filepath)) {
-                // Удаляем старое изображение, если оно есть
-                if ($this->cover_image && file_exists(Yii::getAlias('@webroot') . $this->cover_image)) {
-                    unlink(Yii::getAlias('@webroot') . $this->cover_image);
-                }
-                
-                $this->cover_image = '/uploads/' . $filename;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public function beforeSave($insert)
+	public function beforeSave($insert)
     {
         if (parent::beforeSave($insert)) {
-            $this->coverImageFile = UploadedFile::getInstance($this, 'coverImageFile');
-            if ($this->coverImageFile) {
-                $this->upload();
-            }
+            $this->processCoverImage();
             return true;
         }
         return false;
     }
 
+    public function afterSave($insert, $changedAttributes)
+    {
+        parent::afterSave($insert, $changedAttributes);
+        
+        $this->updateAuthorRelations();
+        
+        if ($insert) {
+            $this->notifySubscribers();
+        }
+    }
+
     public function afterDelete()
     {
         parent::afterDelete();
-        // Удаляем файл изображения при удалении книги
-        if ($this->cover_image && file_exists(Yii::getAlias('@webroot') . $this->cover_image)) {
-            unlink(Yii::getAlias('@webroot') . $this->cover_image);
-        }
+        $this->deleteCoverImage();
     }
 	
-	public function afterSave($insert, $changedAttributes)
-	{
-		parent::afterSave($insert, $changedAttributes);
-		
-		// Обновляем связи с авторами
-		BookAuthor::deleteAll(['book_id' => $this->id]);
-		
-		if (!empty($this->authorIds)) {
-			foreach ($this->authorIds as $authorId) {
-				$relation = new BookAuthor();
-				$relation->book_id = $this->id;
-				$relation->author_id = $authorId;
-				$relation->save();
-			}
-			
-			// Отправляем уведомления только для новых книг
-			if ($insert) {
-				$this->notifySubscribers();
-			}
-		}
-	}
+	protected function updateAuthorRelations()
+    {
+        // Получаем текущих авторов из БД
+        $currentAuthors = $this->getAuthors()->select('id')->column();
+        $newAuthors = $this->authorIds ?: [];
+        
+        // Определяем какие связи нужно добавить, а какие удалить
+        $toAdd = array_diff($newAuthors, $currentAuthors);
+        $toRemove = array_diff($currentAuthors, $newAuthors);
+        
+        // Удаляем только те связи, которых больше нет в authorIds
+        if (!empty($toRemove)) {
+            BookAuthor::deleteAll(['book_id' => $this->id, 'author_id' => $toRemove]);
+        }
+        
+        // Добавляем новые связи
+        foreach ($toAdd as $authorId) {
+            $relation = new BookAuthor([
+                'book_id' => $this->id,
+                'author_id' => $authorId
+            ]);
+            $relation->save();
+        }
+    }
 	
 	public function afterFind()
 	{
@@ -158,6 +142,42 @@ class Book extends \yii\db\ActiveRecord
 		if (empty($this->authorIds)) {
 			$this->authorIds = $this->getAuthors()->select('id')->column();
 		}
+	}
+		
+	protected function processCoverImage()
+    {
+        $this->coverImageFile = UploadedFile::getInstance($this, 'coverImageFile');
+        if ($this->coverImageFile) {
+            $this->deleteCoverImage();
+            $this->cover_image = $this->saveCoverImage();
+        }
+    }
+
+    protected function saveCoverImage()
+    {
+        $path = Yii::getAlias('@webroot/uploads/');
+        if (!file_exists($path)) {
+            mkdir($path, 0777, true);
+        }
+        
+        $filename = Yii::$app->security->generateRandomString() . '.' . $this->coverImageFile->extension;
+        $filepath = $path . $filename;
+        
+        return $this->coverImageFile->saveAs($filepath) ? '/uploads/' . $filename : null;
+    }
+
+    protected function deleteCoverImage()
+    {
+        if ($this->cover_image && file_exists(Yii::getAlias('@webroot') . $this->cover_image)) {
+            unlink(Yii::getAlias('@webroot') . $this->cover_image);
+        }
+    }
+	
+	public function removeCoverImage()
+	{
+		$this->deleteCoverImage();
+		$this->cover_image = null;
+		$this->save(false);
 	}
 	
 	protected function notifySubscribers()

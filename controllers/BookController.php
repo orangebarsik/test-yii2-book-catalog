@@ -21,32 +21,30 @@ class BookController extends Controller
      */
     public function behaviors()
     {
-        return array_merge(
-            parent::behaviors(),
-            [
-				'access' => [
-					'class' => AccessControl::class,
-					'rules' => [
-						[
-							'allow' => true,
-							'actions' => ['index', 'view'],
-							'roles' => ['?', '@'],
-						],
-						[
-							'allow' => true,
-							'actions' => ['create', 'update', 'delete', 'delete-image'],
-							'roles' => ['@'],
-						],
+        return [
+			'access' => [
+				'class' => AccessControl::class,
+				'rules' => [
+					[
+						'allow' => true,
+						'actions' => ['index', 'view'],
+						'roles' => ['?', '@'],
+					],
+					[
+						'allow' => true,
+						'actions' => ['create', 'update', 'delete', 'delete-image'],
+						'roles' => ['@'],
 					],
 				],
-                'verbs' => [
-                    'class' => VerbFilter::className(),
-                    'actions' => [
-                        'delete' => ['POST'],
-                    ],
-                ],
-            ]
-        );
+			],
+			'verbs' => [
+				'class' => VerbFilter::className(),
+				'actions' => [
+					'delete' => ['POST'],
+					'delete-image' => ['POST'],
+				],
+			],
+		];
     }
 
     /**
@@ -94,17 +92,10 @@ class BookController extends Controller
     public function actionCreate()
     {
         $model = new Book();
-
-		if ($this->request->isPost) {
-			$model->load($this->request->post());
-			$model->coverImageFile = UploadedFile::getInstance($model, 'coverImageFile');
-			
-			if ($model->save()) {
-				return $this->redirect(['view', 'id' => $model->id]);
-			}
-		} else {
-			$model->loadDefaultValues();
-		}
+		
+		if ($model->load(Yii::$app->request->post()) && $model->save()) {
+            return $this->redirect(['view', 'id' => $model->id]);
+        }
 
 		return $this->render('create', [
 			'model' => $model,
@@ -122,19 +113,10 @@ class BookController extends Controller
 	{
 		$model = $this->findModel($id);
 
-		if ($this->request->isPost) {
-			$post = $this->request->post();
-			// Явно сохраняем authorIds перед загрузкой
-			$authorIds = $post['Book']['authorIds'] ?? [];
-			$model->load($post);
-			$model->authorIds = $authorIds; // Убедимся, что значения не потеряются
-			$model->coverImageFile = UploadedFile::getInstance($model, 'coverImageFile');
-			
-			if ($model->save()) {
-				return $this->redirect(['view', 'id' => $model->id]);
-			}
-		}
-
+		if ($model->load(Yii::$app->request->post()) && $model->save()) {
+            return $this->redirect(['view', 'id' => $model->id]);
+        }
+		
 		return $this->render('update', [
 			'model' => $model,
 		]);
@@ -150,21 +132,13 @@ class BookController extends Controller
     public function actionDelete($id)
     {
         $this->findModel($id)->delete();
-
         return $this->redirect(['index']);
     }
 	
 	public function actionDeleteImage($id)
 	{
 		$model = $this->findModel($id);
-		
-		if ($model->cover_image && file_exists(Yii::getAlias('@webroot') . $model->cover_image)) {
-			unlink(Yii::getAlias('@webroot') . $model->cover_image);
-		}
-		
-		$model->cover_image = null;
-		$model->save(false); // Сохраняем без валидации
-		
+        $model->removeCoverImage();
 		return $this->redirect(['update', 'id' => $model->id]);
 	}
 
@@ -180,7 +154,6 @@ class BookController extends Controller
         if (($model = Book::findOne(['id' => $id])) !== null) {
             return $model;
         }
-
         throw new NotFoundHttpException('The requested page does not exist.');
     }
 }

@@ -21,32 +21,29 @@ class AuthorController extends Controller
      */
     public function behaviors()
     {
-        return array_merge(
-            parent::behaviors(),
-            [
-				'access' => [
-					'class' => AccessControl::class,
-					'rules' => [
-						[
-							'allow' => true,
-							'actions' => ['index', 'view', 'subscribe'],
-							'roles' => ['?', '@'],
-						],
-						[
-							'allow' => true,
-							'actions' => ['create', 'update', 'delete'],
-							'roles' => ['@'],
-						],
+        return [
+			'access' => [
+				'class' => AccessControl::class,
+				'rules' => [
+					[
+						'allow' => true,
+						'actions' => ['index', 'view', 'subscribe'],
+						'roles' => ['?', '@'],
+					],
+					[
+						'allow' => true,
+						'actions' => ['create', 'update', 'delete'],
+						'roles' => ['@'],
 					],
 				],
-                'verbs' => [
-                    'class' => VerbFilter::className(),
-                    'actions' => [
-                        'delete' => ['POST'],
-                    ],
-                ],
-            ]
-        );
+			],
+			'verbs' => [
+				'class' => VerbFilter::className(),
+				'actions' => [
+					'delete' => ['POST'],
+				],
+			],
+		];
     }
 
     /**

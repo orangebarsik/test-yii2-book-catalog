@@ -19,6 +19,7 @@ Thumbs.db
 /web/index-test.php
 /web/assets/*
 /web/uploads/*
+/config/db.php
 
 # Environment
 .env
